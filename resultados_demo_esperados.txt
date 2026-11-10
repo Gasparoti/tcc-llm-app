@@ -1,0 +1,100 @@
+CLAREZA / LAB — RESULTADOS ESPERADOS PARA DEMONSTRAÇÃO
+
+FINALIDADE E LIMITES
+
+Este arquivo contém cenários e exemplos demonstrativos para apresentar o
+funcionamento esperado do protótipo. As respostas textuais abaixo são exemplos
+ilustrativos; não foram geradas por um provedor de LLM nem coletadas em uma
+pesquisa. Não devem ser apresentadas como resultados experimentais, evidência
+de eficácia ou avaliação factual do sistema.
+
+1. RECOMENDAÇÃO TAG — PEDIDO DIRETO
+
+Intenção de exemplo:
+Explique o ciclo da água de forma simples.
+
+Resultado esperado:
+Recomendação do framework TAG, apropriado para uma solicitação direta.
+
+Campos de exemplo:
+Tarefa: Explique o ciclo da água.
+Ação esperada: Descreva as etapas em linguagem simples e na ordem em que ocorrem.
+Objetivo: Ajudar na revisão de um conteúdo introdutório de ciências.
+Evidências ou fontes: Nenhuma fonte foi fornecida.
+
+Resposta ilustrativa (texto fictício para demonstração):
+O ciclo da água é o movimento contínuo da água entre a superfície da Terra e a
+atmosfera. Com o calor, parte da água evapora; ao esfriar, o vapor se condensa e
+forma nuvens. A água retorna à superfície principalmente como precipitação e
+pode escoar para rios ou infiltrar-se no solo.
+
+Comportamento esperado na interface:
+O prompt consolidado apresenta a intenção, os campos do TAG e os critérios de
+resposta. Após uma consulta bem-sucedida ao provedor, a resposta é dividida em
+frases candidatas para revisão humana. As afirmações começam como “Pendente”;
+isso não significa que tenham sido verificadas.
+
+2. RECOMENDAÇÃO CLEAR — PEDIDO DE ANÁLISE
+
+Intenção de exemplo:
+Compare causas e consequências da urbanização.
+
+Resultado esperado:
+Recomendação do framework CLEAR, pois a intenção contém termos associados a
+comparação e análise.
+
+Campos de exemplo:
+Concisão: Responda em até quatro parágrafos.
+Lógica: Organize a resposta em causas e consequências.
+Critérios explícitos: Diferencie fatores econômicos, sociais e ambientais.
+Adaptação: Use linguagem acessível a estudantes do ensino médio.
+Reflexão: Aponte que os efeitos podem variar conforme a cidade e o período.
+
+Comportamento esperado na interface:
+O prompt inclui os cinco campos CLEAR, a seção de evidências (mesmo sem fontes
+fornecidas) e os critérios gerais para explicitar incertezas e evitar inventar
+fontes.
+
+3. RECOMENDAÇÃO RACE — PEDIDO COM PÚBLICO
+
+Intenção de exemplo:
+Explique fotossíntese para estudantes iniciantes.
+
+Resultado esperado:
+Recomendação do framework RACE, pois a intenção menciona um público específico.
+
+Campos de exemplo:
+Papel: Atue como tutor de biologia para iniciantes.
+Ação: Explique o processo básico da fotossíntese.
+Contexto: O público está começando a estudar células e plantas.
+Expectativa: Use linguagem simples e inclua um exemplo breve.
+
+Comportamento esperado na interface:
+O prompt reúne papel, ação, contexto e expectativa. A recomendação é uma
+heurística local baseada no texto da intenção, não uma classificação feita por
+um modelo de linguagem.
+
+4. RESPOSTAS ESPERADAS DA ROTA DE EXECUÇÃO
+
+Caso: solicitação sem prompt
+Resultado esperado: HTTP 400, com mensagem indicando que o prompt é obrigatório.
+
+Caso: prompt válido, mas sem LLM_MODEL configurado
+Resultado esperado: HTTP 503, informando que é necessário configurar o modelo.
+Não é esperada uma resposta gerada pelo modelo nesse cenário.
+
+Caso: prompt válido com provedor configurado e disponível
+Resultado esperado: resposta do provedor, identificação do modelo e uma lista
+de versões. Com zero revisões, espera-se uma versão; com uma ou duas revisões,
+espera-se a resposta inicial e as versões correspondentes.
+
+5. REVISÃO HUMANA E INDICADORES
+
+As frases extraídas são apresentadas inicialmente como pendentes de revisão.
+Depois de uma pessoa revisar cada frase, ela pode marcar o estado factual e a
+aderência ao escopo. Os indicadores só refletem essas marcações e as heurísticas
+implementadas; não constituem verificação factual automática.
+
+Neste arquivo não há contagens de acertos, erros, precisão ou eficácia. Esses
+números dependeriam de respostas efetivamente obtidas e de critérios de
+avaliação definidos e aplicados por pessoas.

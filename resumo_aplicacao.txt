@@ -1,0 +1,424 @@
+Resumo detalhado da aplicação: Clareza / Lab
+
+1) Visão geral
+
+Esta aplicação é um protótipo em Next.js para apoiar a estruturação de prompts educacionais e a revisão humana de respostas geradas por LLMs. O foco não é substituir a leitura crítica do usuário, e sim organizar a intenção, gerar prompts mais consistentes, enviar a consulta para um provedor externo e revisar afirmações de forma mais consciente.
+
+A interface é visualmente organizada em duas grandes áreas: construção do prompt e revisão da resposta. O usuário descreve a intenção, escolhe um framework (TAG, CLEAR ou RACE), preenche campos específicos, opcionalmente adiciona evidências e monta um prompt final editável. Em seguida, a aplicação envia esse prompt para um modelo compatível com OpenAI Chat Completions e retorna a resposta. Feito isso, ela separa a resposta em frases/afirmações candidatas e ajuda o usuário a avaliá-las como confirmadas, incorretas ou não verificáveis.
+
+O projeto foi pensado como um laboratório didático de prompt engineering e revisão de respostas, não como um detector automático de verdade.
+
+2) Estrutura do projeto
+
+- app/page.tsx
+  Interface principal em React/Next.js. Inclui formulários, recomendações de framework, edição do prompt, consulta ao modelo, análise e revisão de afirmações, além de histórico local no navegador.
+
+- app/api/execute/route.ts
+  Rota de servidor que valida o JSON recebido, limita o tamanho do prompt, valida o número de revisões e chama a lógica do provedor externo.
+
+- lib/frameworks.ts
+  Define os frameworks TAG, CLEAR e RACE, regras de recomendação, composição do prompt final e estrutura dos campos de entrada.
+
+- lib/provider.ts
+  Implementa a comunicação com o provedor LLM usando o endpoint OpenAI-compatible /chat/completions, com validação de configuração, timeout e auto-refinamento (Self-Refine).
+
+- lib/analysis.ts
+  Separa a resposta em afirmações, classifica o tipo da frase e calcula métricas heurísticas de acurácia factual, taxa de incorretas, aderência ao escopo, entre outras estatísticas.
+
+- app/globals.css
+  Estilo principal da aplicação: layout em painel, visual editorial, botões, cards e organização de conteúdo.
+
+3) Fluxo de uso
+
+O fluxo principal é:
+
+1. O usuário descreve a intenção e a tarefa que quer realizar.
+2. A aplicação sugere um framework com base em heurísticas locais.
+3. O usuário escolhe um framework (TAG, CLEAR ou RACE) e preenche os campos obrigatórios.
+4. O usuário pode adicionar evidências ou fontes opcionais.
+5. A aplicação monta um prompt final editável.
+6. O usuário envia esse prompt para o modelo configurado no servidor.
+7. A resposta volta e é exibida no painel de revisão.
+8. A aplicação divide a resposta em frases candidatas e o usuário marca cada uma conforme:
+   - confirmada
+   - incorreta
+   - não verificável
+   - fora do escopo
+9. A aplicação calcula indicadores e ajuda a avaliar a qualidade da resposta.
+10. Se habilitado, o histórico pode ser salvo em localStorage e exportado como JSON para arquivar comentários.
+
+4) Regras de framework e heurística
+
+A aplicação não usa um modelo para recomendar estrutura; ela usa regex/heurísticas simples para decidir qual estrutura melhor se encaixa no texto do usuário.
+
+Código importante de lib/frameworks.ts:
+
+```ts
+export type FrameworkId = "TAG" | "CLEAR" | "RACE";
+
+export const FRAMEWORKS: Record<FrameworkId, PromptFramework> = {
+  TAG: {
+    id: "TAG",
+    name: "Direto ao ponto",
+    expansion: "Task · Action · Goal",
+    fields: [
+      { id: "task", label: "Tarefa", required: true },
+      { id: "action", label: "Ação esperada", required: true },
+      { id: "goal", label: "Objetivo", required: true },
+    ],
+  },
+  CLEAR: {
+    id: "CLEAR",
+    name: "Análise cuidadosa",
+    expansion: "Concise · Logical · Explicit · Adaptive · Reflective",
+    fields: [
+      { id: "concise", label: "Concisão", required: true },
+      { id: "logical", label: "Lógica", required: true },
+      { id: "explicit", label: "Critérios explícitos", required: true },
+      { id: "adaptive", label: "Adaptação", required: true },
+      { id: "reflective", label: "Reflexão", required: true },
+    ],
+  },
+  RACE: {
+    id: "RACE",
+    name: "Papel e contexto",
+    expansion: "Role · Action · Context · Expectation",
+    fields: [
+      { id: "role", label: "Papel", required: true },
+      { id: "action", label: "Ação", required: true },
+      { id: "context", label: "Contexto", required: true },
+      { id: "expectation", label: "Expectativa", required: true },
+    ],
+  },
+};
+
+export function recommendFramework(intent: string): {
+  framework: FrameworkId;
+  reason: string;
+} {
+  const text = intent.toLocaleLowerCase("pt-BR");
+  const hasAudienceOrRole = /\b(professor|estudante|aluno|criança|iniciante|especialista|tutor|papel|público|turma|faixa etária)\b/.test(text);
+  const hasAnalysis = /\b(compare|comparar|analis[ae]|avalie|avaliação|argument|causas|consequências|critérios|evidências|pesquisa|crítica)\b/.test(text);
+
+  if (hasAudienceOrRole) return { framework: "RACE", reason: "..." };
+  if (hasAnalysis) return { framework: "CLEAR", reason: "..." };
+  return { framework: "TAG", reason: "..." };
+}
+```
+
+Essa recomendação é um guia explicável, não um julgamento automatizado de qualidade.
+
+5) Montagem do prompt final
+
+A montagem do prompt inclui intenção, campos do framework e evidências fornecidas. O código seguinte mostra a lógica central.
+
+```ts
+export function composePrompt(
+  frameworkId: FrameworkId,
+  values: Record<string, string>,
+  evidence: string,
+  intent: string,
+): string {
+  const framework = FRAMEWORKS[frameworkId];
+  const sections = [
+    `Intenção original:\n${intent.trim()}`,
+    ...framework.fields.map(
+      (field) => `${field.label}:\n${values[field.id]?.trim() ?? ""}`,
+    ),
+  ];
+
+  sections.push(
+    "Evidências ou fontes fornecidas:\n" +
+      (evidence.trim() || "Nenhuma fonte foi fornecida."),
+    [
+      "Critérios de resposta:",
+      "- Separe fatos verificáveis de interpretações.",
+      "- Não invente dados, citações ou fontes.",
+      "- Quando não houver evidência suficiente, declare a incerteza.",
+      "- Indique o que o usuário deve verificar em fontes primárias.",
+    ].join("\n"),
+  );
+
+  return sections.join("\n\n");
+}
+```
+
+6) Comunicação com o provedor de LLM
+
+A aplicação usa `fetch` para chamar um endpoint compatível com OpenAI. A configuração é feita via variáveis de ambiente do servidor, não via `NEXT_PUBLIC_*`.
+
+Código importante de lib/provider.ts:
+
+```ts
+async function requestCompletion(messages: ChatMessage[]): Promise<string> {
+  const apiKey = process.env.LLM_API_KEY;
+  const model = process.env.LLM_MODEL;
+  const baseUrl = process.env.LLM_BASE_URL ?? "https://api.openai.com/v1";
+  const timeoutMs = Number(process.env.LLM_TIMEOUT_MS ?? 45_000);
+
+  if (!apiKey || !model) {
+    throw new ProviderError(
+      "Configure LLM_API_KEY e LLM_MODEL no arquivo .env.local para habilitar o modelo.",
+      503,
+    );
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () => controller.abort(),
+    Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 45_000,
+  );
+
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      messages,
+      temperature: 0.2,
+      max_tokens: 1200,
+    }),
+    signal: controller.signal,
+    cache: "no-store",
+  });
+
+  return readAssistantText(payload);
+}
+```
+
+A função `generateAndRefine` envia uma resposta inicial e, opcionalmente, executa ciclos de revisão extra (0, 1 ou 2 revisões). Isso é um processo do tipo Self-Refine, com a ideia de melhorar a resposta anterior sem inventar novas informações.
+
+```ts
+export async function generateAndRefine(
+  prompt: string,
+  rounds: number,
+): Promise<{ answer: string; versions: string[]; model: string }> {
+  const model = process.env.LLM_MODEL;
+  if (!model) {
+    throw new ProviderError(
+      "Configure LLM_MODEL no arquivo .env.local para habilitar o modelo.",
+      503,
+    );
+  }
+
+  let answer = await requestCompletion([
+    {
+      role: "system",
+      content:
+        "Você é um assistente educacional. Responda em português, diferencie fatos de interpretações, não invente fontes e declare claramente quando não puder confirmar algo.",
+    },
+    { role: "user", content: prompt },
+  ]);
+  versions.push(answer);
+
+  for (let iteration = 0; iteration < rounds; iteration += 1) {
+    answer = await requestCompletion([
+      {
+        role: "system",
+        content:
+          "Revise a resposta anterior em português. Corrija problemas que possam ser corrigidos com as informações disponíveis, preserve as informações corretas e não invente fatos, citações ou fontes. Declare incertezas. Entregue somente a resposta revisada.",
+      },
+      {
+        role: "user",
+        content: `Instrução original:\n${prompt}\n\nResposta a revisar:\n${answer}\n\nRevise a resposta. Se não houver evidência suficiente para confirmar algo, sinalize isso em vez de adivinhar.`,
+      },
+    ]);
+    versions.push(answer);
+  }
+
+  return { answer, versions, model };
+}
+```
+
+7) Validação e análise da resposta
+
+A revisão humana é apoiada por uma análise automática de afirmações. A resposta é quebrada em sentenças e cada frase vira um “claim” (afirmação) com tipo e estado de revisão.
+
+Código de lib/analysis.ts:
+
+```ts
+export type TruthStatus = "pending" | "correct" | "incorrect" | "unverifiable";
+export type ScopeStatus = "unchecked" | "relevant" | "out_of_scope";
+export type ClaimType = "factual" | "inferential" | "attribution" | "format";
+
+export function extractClaims(response: string): Claim[] {
+  const candidates = response
+    .split(/\r?\n/)
+    .flatMap((line) => line.match(/[^.!?]+[.!?]?/g) ?? [])
+    .map((text) => text.trim())
+    .filter((text) => text.length > 12)
+    .slice(0, 100);
+
+  return candidates.map((text, index) => ({
+    id: `claim-${index + 1}`,
+    text,
+    type: classifyClaim(text),
+    truth: "pending",
+    scope: "unchecked",
+  }));
+}
+
+export function calculateMetrics(response: string, claims: Claim[]): Metrics {
+  const correctClaims = claims.filter((claim) => claim.truth === "correct").length;
+  const incorrectClaims = claims.filter(
+    (claim) => claim.truth === "incorrect",
+  ).length;
+  const unconfirmedClaims = claims.filter(
+    (claim) => claim.truth === "pending" || claim.truth === "unverifiable",
+  ).length;
+  const verifiedClaims = correctClaims + incorrectClaims;
+  const estimatedTokens = response.trim()
+    ? response.trim().split(/\s+/).length
+    : 0;
+
+  return {
+    factualAccuracy:
+      verifiedClaims > 0 ? correctClaims / verifiedClaims : null,
+    hallucinationRate:
+      verifiedClaims > 0 ? incorrectClaims / verifiedClaims : null,
+    scopeAdherence:
+      assessedSegments > 0 ? relevantSegments / assessedSegments : null,
+    unconfirmedPerThousandTokens:
+      estimatedTokens > 0
+        ? (unconfirmedClaims / estimatedTokens) * 1000
+        : 0,
+  };
+}
+```
+
+Observações importantes:
+
+- O algoritmo de segmentação é heurístico e simples.
+- Não há verificação factual automática, busca na web ou RAG.
+- A classificação de “não verificável” não significa automaticamente que a frase seja falsa.
+- A métrica `unconfirmedPerThousandTokens` usa uma estimativa baseada em palavra por espaço, não em token real da LLM.
+
+8) Interface principal e revisão
+
+A interface principal em `app/page.tsx` inclui:
+
+- campo de intenção
+- seleção de framework
+- campos de prompts específicos
+- área de evidências
+- prompt final editável e botão de cópia
+- seleção de número de revisões (0, 1 ou 2)
+- envio da requisição ao servidor
+- exibição da resposta do modelo
+- lista de afirmações com tipos e estados
+- painel de métricas e revisão humana
+- histórico em localStorage
+- exportação em JSON com mascaramento de e-mails e telefones
+
+Trecho importante da lógica do cliente:
+
+```ts
+async function submitPrompt(event: FormEvent<HTMLFormElement>) {
+  event.preventDefault();
+  if (!prompt.trim()) {
+    setError("Gere ou escreva o prompt final antes de consultar o modelo.");
+    return;
+  }
+
+  setLoading(true);
+  setError("");
+  setAnswer("");
+  setClaims([]);
+
+  try {
+    const response = await fetch("/api/execute", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt, rounds }),
+    });
+
+    const result = (await response.json()) as ExecuteResponse;
+    if (!response.ok) {
+      setError(result.error ?? "Não foi possível consultar o modelo.");
+      return;
+    }
+
+    const finalAnswer = result.answer;
+    const extracted = extractClaims(finalAnswer);
+    setAnswer(finalAnswer);
+    setClaims(extracted);
+  } catch {
+    setError("Não foi possível falar com a aplicação. Verifique sua conexão e tente novamente.");
+  } finally {
+    setLoading(false);
+  }
+}
+```
+
+Também há lógica para salvar histórico local no navegador:
+
+```ts
+useEffect(() => {
+  try {
+    const saved = window.localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      const parsed: unknown = JSON.parse(saved);
+      if (Array.isArray(parsed)) {
+        setHistory(parsed.filter(isStoredInteraction));
+      }
+    }
+  } catch {
+    setHistoryMessage("Não foi possível ler o histórico local deste navegador.");
+  }
+}, []);
+```
+
+9) Validação e segurança prática
+
+A aplicação adota medidas práticas, mas não trata tudo como produção:
+
+- O servidor valida entrada JSON e tamanho do prompt.
+- Valida o número de revisões e usa `force-dynamic` para evitar cache.
+- Expõe erros amigáveis para o cliente.
+- O provedor aceita variáveis de ambiente e verifica `LLM_BASE_URL`.
+- O histórico local mascara e-mails e telefones comuns, mas não garante anonimização perfeita.
+- O app não implementa autenticação, banco de dados persistente, rate limiting multiusuário, RAG ou LGPD compliance formal.
+
+10) Importante: o que a aplicação não é
+
+A aplicação não é uma ferramenta de verificação factual automática. Ela ajuda a:
+
+- organizar prompts,
+- comparar respostas,
+- revisar afirmações,
+- calcular indicadores heurísticos,
+- promover leitura crítica.
+
+Ela não substitui:
+
+- checagem de fontes primárias,
+- revisão científica ou acadêmica,
+- busca ativa na web,
+- inferência de verdade automática.
+
+11) Resumo final
+
+O projeto é um protótipo de laboratório para estruturação de prompt e revisão humana de respostas de LLMs. Ele combina interface web em Next.js, backend no próprio app para validação e orquestração, heurísticas para recomendar estruturas de prompt e separar afirmações em sentenças, e um fluxo de análise que permite ao usuário marcar a qualidade de cada afirmação. É uma ferramenta útil para educar sobre prompt engineering e leitura crítica de respostas, mas não deve ser tratada como um verificador de fatos automático.
+
+Arquivos centrais:
+
+- app/page.tsx
+- app/api/execute/route.ts
+- lib/frameworks.ts
+- lib/provider.ts
+- lib/analysis.ts
+
+12) Comandos relevantes
+
+```powershell
+npm install
+npm run dev
+npm run typecheck
+npm run lint
+npm run build
+```
+
+Observação: o README informa que o ambiente de criação não tinha Node.js/npm instalados; por isso, a validação real precisa ser feita localmente após configurar o ambiente.
