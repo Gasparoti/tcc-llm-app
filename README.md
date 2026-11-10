@@ -9,9 +9,9 @@ Protótipo de pesquisa em Next.js para estruturação assistida de prompts educa
 
 ## Começar
 
-```powershell
+```sh
 npm install
-Copy-Item .env.example .env.local
+cp .env.example .env.local
 ```
 
 Edite `.env.local` e informe as configurações do provedor:
@@ -25,7 +25,7 @@ LLM_TIMEOUT_MS=45000
 
 Inicie o servidor de desenvolvimento:
 
-```powershell
+```sh
 npm run dev
 ```
 
@@ -43,19 +43,22 @@ Abra `http://localhost:3000`. As credenciais são lidas exclusivamente pela rota
 
 - A separação de frases e a sugestão de categoria são heurísticas. Não há verificação factual automatizada, busca na web, RAG nem julgamento por um segundo modelo.
 - “Não confirmada” não significa “falsa”. Acurácia, taxa de incorretas e aderência só são calculadas após anotações humanas; a densidade usa uma estimativa de tokens baseada em palavras separadas por espaços.
-- O histórico guarda prompt, resposta e avaliações em `localStorage` quando habilitado e mascara formatos comuns de e-mail e telefone. Isso não garante anonimização completa. Revise e remova outros dados identificáveis antes de compartilhar o histórico ou arquivo exportado.
+- O histórico guarda prompt e resposta em `localStorage` quando habilitado e mascara formatos comuns de e-mail e telefone na exportação. As marcações de revisão ainda não são incluídas no histórico. A máscara não garante anonimização completa; revise e remova outros dados identificáveis antes de compartilhar o arquivo exportado.
 - As chamadas ao provedor podem ter custo e estão sujeitas a limites e políticas do serviço escolhido. Forneça somente dados que você tem autorização para enviar.
 - O protótipo limita tamanho do prompt, tempo e revisões, mas não inclui rate limiting distribuído por usuário/IP; publique atrás de uma camada de proteção adequada.
 - Este protótipo não implementa autenticação, banco de dados, RAG ou conformidade jurídica certificada com a LGPD.
 
 ## Comandos
 
-```powershell
+```sh
 npm run dev
 npm run typecheck
 npm run lint
+npm test
 npm run build
 ```
+
+Os testes usam `node:test` com suporte a TypeScript via `tsx`. Adicione testes `*.test.ts` em `tests/` e execute-os com `npm test`.
 
 ## Estrutura
 
@@ -64,7 +67,3 @@ npm run build
 - `lib/frameworks.ts`: definição configurável de TAG, CLEAR e RACE.
 - `lib/provider.ts`: adaptador para provedores compatíveis com Chat Completions.
 - `lib/analysis.ts`: segmentação heurística e cálculo dos indicadores após revisão.
-
-## Validação
-
-Este ambiente de criação não tinha Node.js/npm disponíveis; por isso, dependências, typecheck, lint e build ainda precisam ser executados localmente após instalar o Node.js.
